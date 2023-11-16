@@ -161,6 +161,7 @@ on:
         type: choice
         options:
           - ophub/kernel
+          - kemp-zz/kernel
       kernel_usage:
         description: "Set the tags of the stable kernel."
         required: false
@@ -195,7 +196,7 @@ on:
         options:
           - ophub
           - angel
-          - yourname
+          - kemp-zz
 
 env:
   TZ: America/New_York
