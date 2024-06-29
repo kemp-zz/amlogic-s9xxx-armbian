@@ -32,7 +32,7 @@ on:
           - 6.1.y_6.6.y
           - 5.15.y_5.10.y
           - 6.1.87
-          - 6.6.33
+          - - 6.1.86~e10a90bbc216c836d8454f78e8860256-r1
       kernel_auto:
         description: "Auto use the latest kernel"
         required: false
