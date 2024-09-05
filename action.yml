@@ -240,13 +240,13 @@ runs:
 
             # 准备编译命令
             make_command=""
-            make_command="${make_command} -r kernel-source"  # 使用本地下载的源码
+            make_command="${make_command} -d ${GITHUB_ACTION_PATH}/kernel-source"  # 使用本地下载的源码
             make_command="${make_command} -k 5.15.162"  # 固定版本号
-            [[ -n "${{ inputs.kernel_package }}" ]] && make_command="${make_command} -m ${{ inputs.kernel_package }}"
+            [[ -n "${{ inputs.kernel_package }}" ]] && make_command="${make_command} -p ${{ inputs.kernel_package }}"
             [[ -n "${{ inputs.kernel_sign }}" ]] && make_command="${make_command} -n ${{ inputs.kernel_sign }}"
             [[ -n "${{ inputs.kernel_toolchain }}" ]] && make_command="${make_command} -t ${{ inputs.kernel_toolchain }}"
             [[ -n "${{ inputs.compress_format }}" ]] && make_command="${make_command} -c ${{ inputs.compress_format }}"
-            
+    
             echo "Executing: ./recompile ${make_command}"
             if [ -f "./recompile" ]; then
                 sudo ./recompile ${make_command}
