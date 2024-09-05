@@ -241,6 +241,7 @@ runs:
             # 准备编译命令
             make_command=""
             make_command="${make_command} -k 5.15.162"  # 固定版本号
+            make_command="${make_command} -a false"  # 禁用自动更新到最新版本
             [[ -n "${{ inputs.kernel_package }}" ]] && make_command="${make_command} -p ${{ inputs.kernel_package }}"
             [[ -n "${{ inputs.kernel_sign }}" ]] && make_command="${make_command} -n ${{ inputs.kernel_sign }}"
             [[ -n "${{ inputs.kernel_toolchain }}" ]] && make_command="${make_command} -t ${{ inputs.kernel_toolchain }}"
