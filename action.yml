@@ -97,6 +97,8 @@ runs:
         git fetch --depth=1 origin 244dce52c74abd24de772a07f83522493c888412
         git checkout FETCH_HEAD
         
+        cd ..
+        
         # Prepare compilation command
         make_command=""
         make_command="${make_command} -k ${{ inputs.kernel_version }}"
@@ -106,8 +108,18 @@ runs:
         make_command="${make_command} -t ${{ inputs.kernel_toolchain }}"
         make_command="${make_command} -c ${{ inputs.compress_format }}"
         
+        # Check if recompile script exists and is executable
+        if [ ! -f "./recompile" ]; then
+          echo "Error: recompile script not found"
+          ls -la
+          exit 1
+        fi
+        
+        # Make sure the script is executable
+        chmod +x ./recompile
+        
         # Execute compilation
-        sudo -E ./recompile ${make_command}
+        sudo -E $(pwd)/recompile ${make_command}
         
         echo "Kernel compilation completed."
         echo "Disk usage after compilation:"
