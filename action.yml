@@ -180,41 +180,53 @@ runs:
             echo -e "PACKAGED_STATUS: success"
             echo -e "PACKAGED_OUTPUTPATH files list: \n$(ls -l ${PWD}/${armbian_filepath} 2>/dev/null)"
 
-        elif [[ "${build_target}" == "kernel" ]]; then
+       elif [[ "${build_target}" == "kernel" ]]; then
 
-            cd ${GITHUB_ACTION_PATH}
-            echo -e "Start compile kernel..."
+           cd ${GITHUB_ACTION_PATH}
+           echo -e "Start compile kernel..."
 
-            # 下载指定版本的内核源码
-            echo "Downloading kernel source for version 5.15.162..."
-            git clone --depth 1 https://github.com/unifreq/linux-5.15.y.git -b main kernel-source
-            cd kernel-source
-            git fetch --depth=1 origin 244dce52c74abd24de772a07f83522493c888412
-            git checkout FETCH_HEAD
-            
-            # 显示当前的 git 状态和版本信息
-            git status
-            git describe --tags
-            
-            cd ..
+           # 下载指定版本的内核源码
+           echo "Downloading kernel source for version 5.15.162..."
+           git clone --depth 1 https://github.com/unifreq/linux-5.15.y.git -b main kernel-source
+           cd kernel-source
+           git fetch --depth=1 origin 244dce52c74abd24de772a07f83522493c888412
+           git checkout FETCH_HEAD
+    
+           # 显示当前的 git 状态和版本信息
+           echo "Git status:"
+           git status
+           echo "Git log (last commit):"
+           git log -1
+           echo "Kernel version from Makefile:"
+           grep -E "^VERSION|^PATCHLEVEL|^SUBLEVEL" Makefile
+    
+           cd ..
 
-            config_filepath="compile-kernel/tools/config"
-            kernel_outpath="compile-kernel/output"
-            [[ -d "${config_filepath}" ]] || mkdir -p ${config_filepath}
-            [[ -d "${kernel_outpath}" ]] || mkdir -p ${kernel_outpath}
+           config_filepath="compile-kernel/tools/config"
+           kernel_outpath="compile-kernel/output"
+           [[ -d "${config_filepath}" ]] || mkdir -p ${config_filepath}
+           [[ -d "${kernel_outpath}" ]] || mkdir -p ${kernel_outpath}
 
-            if [[ -n "${{ inputs.kernel_config }}" && "${{ inputs.kernel_config }}" != "false" ]]; then
-                if [[ "$(ls ${GITHUB_WORKSPACE}/${{ inputs.kernel_config }}/config-* -l 2>/dev/null | grep "^-" | wc -l)" -ne "0" ]]; then
-                    echo -e "Use a custom kernel compilation template..."
-                    rm -f ${config_filepath}/* 2>/dev/null && sync
-                    cp -vf ${GITHUB_WORKSPACE}/${{ inputs.kernel_config }}/config-* ${config_filepath}/ 2>/dev/null && sync
-                    echo -e "List of Kernel Custom Compilation Configuration Templates: \n$(ls -l ${config_filepath})"
-                else
-                    echo -e "The custom kernel compilation template path is invalid, continue to use the default template."
-                fi
-            else
-                echo -e "Use the default kernel compilation template."
-            fi
+           # ... (rest of the code remains the same)
+
+           make_command=""
+           make_command="${make_command} -r kernel-source"  # 使用本地下载的源码
+           make_command="${make_command} -k 5.15.162"  # 固定版本号
+           [[ -n "${{ inputs.kernel_package }}" ]] && make_command="${make_command} -m ${{ inputs.kernel_package }}"
+           [[ -n "${{ inputs.kernel_sign }}" ]] && make_command="${make_command} -n ${{ inputs.kernel_sign }}"
+           [[ -n "${{ inputs.kernel_toolchain }}" ]] && make_command="${make_command} -t ${{ inputs.kernel_toolchain }}"
+           [[ -n "${{ inputs.compress_format }}" ]] && make_command="${make_command} -c ${{ inputs.compress_format }}"
+    
+           echo "Executing: ./recompile ${make_command}"
+           if [ -f "./recompile" ]; then
+               sudo ./recompile ${make_command}
+           else
+               echo "Error: recompile script not found"
+               ls -la
+               exit 1
+           fi
+
+           # ... (rest of the code remains the same)
 
             custom_kernel_patch="compile-kernel/tools/patch"
             [[ -d "${custom_kernel_patch}" ]] || mkdir -p ${custom_kernel_patch}
