@@ -286,4 +286,19 @@ runs:
             echo "PACKAGED_OUTPUTPATH=${PWD}/${kernel_outpath}" >> ${GITHUB_ENV}
             echo "PACKAGED_OUTPUTDATE=$(date +"%m.%d.%H%M")" >> ${GITHUB_ENV}
             echo "PACKAGED_STATUS=success" >> ${GITHUB_ENV}
-            echo -e "PACKAGED_OUTPUTTAGS:
+            echo -e "PACKAGED_OUTPUTTAGS: ${output_tags}"
+            echo -e "PACKAGED_OUTPUTPATH: ${PWD}/${kernel_outpath}"
+            echo -e "PACKAGED_OUTPUTDATE: $(date +"%m.%d.%H%M")"
+            echo -e "PACKAGED_STATUS: success"
+            echo -e "PACKAGED_OUTPUTPATH files list: \n$(ls -l ${PWD}/${kernel_outpath} 2>/dev/null)"
+          else
+            echo -e "Please select a build target: armbian / kernel"
+            exit 1
+          fi
+        }
+
+        build_kernel
+
+branding:
+  icon: "terminal"
+  color: "gray-dark"
