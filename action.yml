@@ -185,16 +185,24 @@ runs:
             cd ${GITHUB_ACTION_PATH}
             echo -e "Start compile kernel..."
 
-            # 直接下载指定版本的内核源码
+            # 下载指定版本的内核源码
             echo "Downloading kernel source for version 5.15.162..."
             git clone --depth 1 https://github.com/unifreq/linux-5.15.y.git -b main kernel-source
             cd kernel-source
-            git checkout 244dce52c74abd24de772a07f83522493c888412
+            git fetch --depth=1 origin 244dce52c74abd24de772a07f83522493c888412
+            git checkout FETCH_HEAD
+            
+            # 显示当前的 git 状态和版本信息
+            git status
+            git describe --tags
+            
             cd ..
 
             config_filepath="compile-kernel/tools/config"
             kernel_outpath="compile-kernel/output"
             [[ -d "${config_filepath}" ]] || mkdir -p ${config_filepath}
+            [[ -d "${kernel_outpath}" ]] || mkdir -p ${kernel_outpath}
+
             if [[ -n "${{ inputs.kernel_config }}" && "${{ inputs.kernel_config }}" != "false" ]]; then
                 if [[ "$(ls ${GITHUB_WORKSPACE}/${{ inputs.kernel_config }}/config-* -l 2>/dev/null | grep "^-" | wc -l)" -ne "0" ]]; then
                     echo -e "Use a custom kernel compilation template..."
@@ -230,6 +238,8 @@ runs:
             [[ -n "${{ inputs.kernel_sign }}" ]] && make_command="${make_command} -n ${{ inputs.kernel_sign }}"
             [[ -n "${{ inputs.kernel_toolchain }}" ]] && make_command="${make_command} -t ${{ inputs.kernel_toolchain }}"
             [[ -n "${{ inputs.compress_format }}" ]] && make_command="${make_command} -c ${{ inputs.compress_format }}"
+            
+            echo "Executing: ./recompile ${make_command}"
             sudo ./recompile ${make_command}
 
             cd ${GITHUB_ACTION_PATH}
