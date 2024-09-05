@@ -240,7 +240,6 @@ runs:
 
             # 准备编译命令
             make_command=""
-            make_command="${make_command} -d ${GITHUB_ACTION_PATH}/kernel-source"  # 使用本地下载的源码
             make_command="${make_command} -k 5.15.162"  # 固定版本号
             [[ -n "${{ inputs.kernel_package }}" ]] && make_command="${make_command} -p ${{ inputs.kernel_package }}"
             [[ -n "${{ inputs.kernel_sign }}" ]] && make_command="${make_command} -n ${{ inputs.kernel_sign }}"
@@ -249,13 +248,14 @@ runs:
     
             echo "Executing: ./recompile ${make_command}"
             if [ -f "./recompile" ]; then
-                sudo ./recompile ${make_command}
+                # 将内核源码路径作为环境变量传递
+                export KERNEL_SOURCE_PATH="${GITHUB_ACTION_PATH}/kernel-source"
+                sudo -E ./recompile ${make_command}
             else
                 echo "Error: recompile script not found"
                 ls -la
                 exit 1
             fi
-
             cd ${GITHUB_ACTION_PATH}
             output_tags="$(ls -l ${PWD}/${kernel_outpath}/*.tar.gz | awk '{print $9}' | grep -oE '[1-9][0-9]{0,2}\.[0-9]{1,3}\.[0-9]+' | xargs | tr "[ ]" "_")"
             echo -e "Output environment variables."
