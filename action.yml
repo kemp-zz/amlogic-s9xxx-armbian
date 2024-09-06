@@ -102,7 +102,7 @@ runs:
         # Prepare compilation command
         make_command=""
         make_command="${make_command} -k ${{ inputs.kernel_version }}"
-        make_command="${make_command} -a ${{ inputs.kernel_auto }}"
+        make_command="${make_command} -a false"
         make_command="${make_command} -p ${{ inputs.kernel_package }}"
         make_command="${make_command} -n ${{ inputs.kernel_sign }}"
         make_command="${make_command} -t ${{ inputs.kernel_toolchain }}"
@@ -126,7 +126,7 @@ runs:
         df -h
 
     - name: Upload Kernel
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: compiled-kernel
         path: /home/runner/work/_actions/kemp-zz/amlogic-s9xxx-armbian/main/compile-kernel/output
