@@ -66,11 +66,11 @@ inputs:
   kernel_toolchain:
     description: "Select the compilation toolchain"
     required: false
-    default: "clang"
+    default: "gcc"
   kernel_config:
     description: "Set the path of kernel .config"
     required: false
-    default: "false"
+    default: "kernel-config/release/general"
   kernel_patch:
     description: "Set the directory for kernel patches"
     required: false
@@ -243,6 +243,8 @@ runs:
             echo -e "Please select a build target: armbian / kernel"
             exit 1
         fi
+      env:
+        TZ: America/New_York
 
 branding:
   icon: "terminal"
