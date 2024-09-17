@@ -318,11 +318,8 @@ get_kernel_source() {
 
     if [[ ! -d "${kernel_path}/${local_kernel_path}" ]]; then
         info_msg "Cloning kernel repository..."
-        for i in {1..3}; do
-            git clone --depth=1 --single-branch --branch=${code_branch} https://github.com/${server_kernel_repo} ${kernel_path}/${local_kernel_path} && break
-            [[ $i == 3 ]] && error_msg "Failed to clone kernel repository."
-            sleep 10
-        done
+        git clone --depth=1 --single-branch --branch=${code_branch} https://github.com/${server_kernel_repo} ${kernel_path}/${local_kernel_path}
+        [[ $? -eq 0 ]] || error_msg "Failed to clone kernel repository."
     else
         info_msg "Updating existing kernel repository..."
         cd ${kernel_path}/${local_kernel_path}
@@ -333,18 +330,38 @@ get_kernel_source() {
 
     cd ${kernel_path}/${local_kernel_path}
     
-    # Get kernel version
-    local_makefile_version="$(grep -oE "VERSION =.*" Makefile | cut -d' ' -f3)"
-    local_makefile_patchlevel="$(grep -oE "PATCHLEVEL =.*" Makefile | cut -d' ' -f3)"
-    local_makefile_sublevel="$(grep -oE "SUBLEVEL =.*" Makefile | cut -d' ' -f3)"
-
-    if [[ "${auto_kernel}" == "true" && "${kernel_sub}" -gt "${local_makefile_sublevel}" ]]; then
-        kernel_version="${local_makefile_version}.${local_makefile_patchlevel}.${kernel_sub}"
-        info_msg "Using upstream kernel version: ${kernel_version}"
+    if [[ -n "${kernel_tag}" ]]; then
+        info_msg "Checking out specific kernel tag or commit: ${kernel_tag}"
+        git checkout ${kernel_tag}
+        [[ $? -eq 0 ]] || error_msg "Failed to checkout kernel tag or commit: ${kernel_tag}"
+        
+        local tag_version=$(git describe --tags --abbrev=0)
+        local makefile_version=$(make kernelversion)
+        info_msg "Tag version: ${tag_version}, Makefile version: ${makefile_version}"
+        
+        if [[ "${tag_version}" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            kernel_version="${BASH_REMATCH[1]}"
+            info_msg "Using tag version: ${kernel_version}"
+        else
+            kernel_version="${makefile_version}"
+            warning_msg "Tag doesn't match expected format. Using Makefile version: ${kernel_version}"
+        fi
     else
-        kernel_version="${local_makefile_version}.${local_makefile_patchlevel}.${local_makefile_sublevel}"
-        info_msg "Using local kernel version: ${kernel_version}"
+        local makefile_version=$(make kernelversion)
+        local makefile_patchlevel=$(grep -oP 'PATCHLEVEL = \K\d+' Makefile)
+        local makefile_sublevel=$(grep -oP 'SUBLEVEL = \K\d+' Makefile)
+
+        if [[ "${auto_kernel}" == "true" && -n "${kernel_sub}" && "${kernel_sub}" -gt "${makefile_sublevel}" ]]; then
+            kernel_version="${makefile_version%.*}.${kernel_sub}"
+            info_msg "Using latest kernel version: ${kernel_version}"
+        else
+            kernel_version="${makefile_version}"
+            info_msg "Using Makefile kernel version: ${kernel_version}"
+        fi
     fi
+
+    # Verify version consistency
+    [[ "${kernel_version}" == "$(make kernelversion)" ]] || warning_msg "Kernel version mismatch: ${kernel_version} vs $(make kernelversion)"
 
     # Remove local version
     rm -f ${kernel_path}/${local_kernel_path}/localversion
@@ -352,9 +369,8 @@ get_kernel_source() {
     # Apply patches if needed
     [[ "${auto_patch}" == "true" ]] && apply_patch
 
-        info_msg "Kernel source code preparation completed."
+    info_msg "Kernel source code preparation completed for version ${kernel_version}"
 }
-
 # Chroot into Armbian to generate initrd.img, uInitrd and make scripts
 chroot_armbian() {
     info_msg "Creating chroot environment..."
@@ -373,19 +389,20 @@ chroot_armbian() {
     info_msg "Armbian PLATFORM: ${ARMBIAN_PLATFORM}"
 
     info_msg "Copying kernel files to Armbian system..."
-    rm -f ${tag_rootfs}/boot/{config-*,initrd.img-*,System.map-*,vmlinuz-*,uInitrd*,*Image}
-    cp -f ${kernel_path}/${local_kernel_path}/System.map ${tag_rootfs}/boot/System.map-${kernel_outname}
-    cp -f ${kernel_path}/${local_kernel_path}/.config ${tag_rootfs}/boot/config-${kernel_outname}
-    cp -f ${kernel_path}/${local_kernel_path}/arch/${SRC_ARCH}/boot/Image ${tag_rootfs}/boot/vmlinuz-${kernel_outname}
-    
+    local boot_path="${tag_rootfs}/boot"
+    mkdir -p "${boot_path}"
+    cp -f "${kernel_path}/${local_kernel_path}/arch/${SRC_ARCH}/boot/Image" "${boot_path}/vmlinuz-${kernel_outname}" || error_msg "Failed to copy kernel image"
+    cp -f "${kernel_path}/${local_kernel_path}/.config" "${boot_path}/config-${kernel_outname}" || error_msg "Failed to copy kernel config"
+    cp -f "${kernel_path}/${local_kernel_path}/System.map" "${boot_path}/System.map-${kernel_outname}" || error_msg "Failed to copy System.map"
+
     if [[ "${ARMBIAN_PLATFORM}" == "rockchip" || "${ARMBIAN_PLATFORM}" == "allwinner" ]]; then
-        cp -f ${tag_rootfs}/boot/vmlinuz-${kernel_outname} ${tag_rootfs}/boot/Image
+        cp -f "${boot_path}/vmlinuz-${kernel_outname}" "${boot_path}/Image" || error_msg "Failed to copy Image for ${ARMBIAN_PLATFORM}"
     else
-        cp -f ${tag_rootfs}/boot/vmlinuz-${kernel_outname} ${tag_rootfs}/boot/zImage
+        cp -f "${boot_path}/vmlinuz-${kernel_outname}" "${boot_path}/zImage" || error_msg "Failed to copy zImage"
     fi
 
     rm -rf ${tag_rootfs}/usr/lib/modules/*
-    cp -rf ${output_path}/modules/lib/modules/${kernel_outname} -t ${tag_rootfs}/usr/lib/modules
+    cp -rf ${output_path}/modules/lib/modules/${kernel_outname} -t ${tag_rootfs}/usr/lib/modules || error_msg "Failed to copy modules"
 
     info_msg "Copying kernel source tree to Armbian system..."
     local armbian_kernel_path="${tag_rootfs}/opt/linux-kernel"
@@ -410,7 +427,10 @@ chroot_armbian() {
     chmod +x ${tag_rootfs}/root/ubuntu_chroot_armbian.sh
 
     info_msg "Entering chroot environment to generate initrd.img and uInitrd..."
-    chroot ${tag_rootfs} /bin/bash -c "/root/ubuntu_chroot_armbian.sh ${kernel_outname}"
+    chroot ${tag_rootfs} /bin/bash -c "/root/ubuntu_chroot_armbian.sh ${kernel_outname}" || {
+        error_msg "Chroot command failed. Check ubuntu_chroot_armbian.sh for errors."
+        cat ${tag_rootfs}/root/ubuntu_chroot_armbian.sh
+    }
     [[ -f "${tag_rootfs}/boot/uInitrd-${kernel_outname}" ]] || error_msg "Failed to create uInitrd-${kernel_outname}"
 
     info_msg "Copying generated files from Armbian system..."
@@ -423,13 +443,20 @@ chroot_armbian() {
 
     info_msg "Chroot process completed."
 }
-
 # Set up the compile kernel environment
 compile_env() {
     info_msg "Setting up kernel compilation environment..."
 
+    # Ensure kernel_version doesn't contain unexpected variable references
+    kernel_version=$(echo "${kernel_version}" | sed 's/\$//g')
     kernel_outname="${kernel_version}${custom_name}"
+    kernel_outname=$(echo "${kernel_outname}" | sed 's/\$//g')
+
+    info_msg "Kernel version: ${kernel_version}"
     info_msg "Kernel output name: ${kernel_outname}"
+
+    export kernel_version
+    export kernel_outname
 
     rm -rf ${output_path}/{chroot/,boot/,dtb/,modules/,header/,${kernel_version}/}
     mkdir -p ${output_path}/{chroot/{root/boot/,},boot/,dtb/{allwinner/,amlogic/,rockchip/},modules/,header/,${kernel_version}/}
@@ -447,9 +474,9 @@ compile_env() {
     make ${MAKE_SET_STRING} mrproper
 
     if [[ ! -s ".config" ]]; then
-        [[ -s "${config_path}/config-${kernel_verpatch}" ]] || error_msg "Missing kernel config template: config-${kernel_verpatch}"
-        cp -f ${config_path}/config-${kernel_verpatch} .config
-        info_msg "Using kernel config template: config-${kernel_verpatch}"
+        [[ -s "${config_path}/config-${kernel_version%.*}" ]] || error_msg "Missing kernel config template: config-${kernel_version%.*}"
+        cp -f ${config_path}/config-${kernel_version%.*} .config
+        info_msg "Using kernel config template: config-${kernel_version%.*}"
     else
         info_msg "Using existing .config file"
     fi
@@ -458,6 +485,7 @@ compile_env() {
 
     info_msg "Kernel compilation environment set up completed."
 }
+
 
 # Compile the dtbs
 compile_dtbs() {
@@ -468,21 +496,33 @@ compile_dtbs() {
 
 # Compile the kernel
 compile_kernel() {
-    info_msg "Starting kernel compilation..."
+    info_msg "Starting kernel compilation for version ${kernel_version}"
+    info_msg "Kernel output name: ${kernel_outname}"
+    
     make ${MAKE_SET_STRING} Image modules dtbs -j$(nproc)
-    [[ $? -eq 0 ]] && success_msg "Kernel compilation completed successfully." || error_msg "Kernel compilation failed."
+    [[ $? -eq 0 ]] || error_msg "Kernel compilation failed."
+    success_msg "Kernel compilation completed successfully."
 
     info_msg "Installing modules..."
     make ${MAKE_SET_STRING} INSTALL_MOD_PATH=${output_path}/modules modules_install
-    [[ $? -eq 0 ]] && success_msg "Modules installation completed successfully." || error_msg "Modules installation failed."
+    [[ $? -eq 0 ]] || error_msg "Modules installation failed."
+    success_msg "Modules installation completed successfully."
+
+    # Verify module installation path
+    local module_path="${output_path}/modules/lib/modules/${kernel_outname}"
+    [[ -d "${module_path}" ]] || error_msg "Module directory not found: ${module_path}"
 
     info_msg "Stripping modules..."
     find ${output_path}/modules -name "*.ko" -exec ${CROSS_COMPILE}strip --strip-debug {} +
-    [[ $? -eq 0 ]] && success_msg "Modules stripping completed successfully." || warning_msg "Modules stripping encountered issues."
+    [[ $? -eq 0 ]] || warning_msg "Modules stripping encountered issues."
+    success_msg "Modules stripping completed."
+
+    info_msg "Kernel compilation completed. Verifying version..."
+    local compiled_version=$(make kernelversion)
+    [[ "${compiled_version}" == "${kernel_version}" ]] || warning_msg "Compiled kernel version (${compiled_version}) does not match expected version (${kernel_version})"
 
     chroot_armbian
 }
-
 # Package dtbs files
 packit_dtbs() {
     info_msg "Packaging dtbs files..."
