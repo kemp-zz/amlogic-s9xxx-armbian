@@ -271,7 +271,7 @@ toolchain_check() {
     # Set the default path
     path_os_variable="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
 
-    # Download the cross-compilation toolchain: [ clang / gcc ]
+    # Download and set up the cross-compilation toolchain
     [[ -d "/etc/apt/sources.list.d" ]] || mkdir -p /etc/apt/sources.list.d
     if [[ "${toolchain_name}" == "clang" ]]; then
         # Install LLVM
@@ -331,8 +331,19 @@ toolchain_check() {
         export LD="${CROSS_COMPILE}ld.bfd"
         export MFLAGS=""
     fi
-}
 
+    # Verify toolchain installation
+    if command -v ${CROSS_COMPILE}gcc &> /dev/null; then
+        echo -e "${SUCCESS} ARM64 cross-compilation toolchain is properly installed and accessible."
+    else
+        error_msg "ARM64 cross-compilation toolchain is not properly installed or not in PATH."
+    fi
+
+    # Set ARCH environment variable
+    export ARCH=arm64
+
+    echo -e "${INFO} Toolchain check completed. ARCH=${ARCH}, CROSS_COMPILE=${CROSS_COMPILE}, CC=${CC}, LD=${LD}"
+}
 query_version() {
     cd ${current_path}
     echo -e "${STEPS} Start querying the latest kernel version..."
@@ -484,15 +495,23 @@ compile_env() {
     cd ${kernel_path}/${local_kernel_path}
     echo -e "${STEPS} Set cross compilation parameters..."
 
+    # Set cross-compilation environment variables
+    export ARCH=arm64
+    export CROSS_COMPILE=aarch64-linux-gnu-
+    export PATH="/usr/local/toolchain/gcc-arm-10.3-2021.07-x86_64-aarch64-none-linux-gnu/bin:$PATH"
+
+    # Ensure we're using the correct compiler
+    CC="${CROSS_COMPILE}gcc"
+    LD="${CROSS_COMPILE}ld"
+
     # Show variable
-    echo -e "${INFO} ARCH: [ ${SRC_ARCH} ]"
-    echo -e "${INFO} LOCALVERSION: [ ${LOCALVERSION} ]"
+    echo -e "${INFO} ARCH: [ ${ARCH} ]"
     echo -e "${INFO} CROSS_COMPILE: [ ${CROSS_COMPILE} ]"
     echo -e "${INFO} CC: [ ${CC} ]"
     echo -e "${INFO} LD: [ ${LD} ]"
 
     # Set generic make string
-    MAKE_SET_STRING=" ARCH=${SRC_ARCH} CROSS_COMPILE=${CROSS_COMPILE} CC=${CC} LD=${LD} ${MFLAGS} LOCALVERSION=${LOCALVERSION} "
+    MAKE_SET_STRING="ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} CC=${CC} LD=${LD} ${MFLAGS} LOCALVERSION=${LOCALVERSION}"
 
     # Make clean/mrproper
     make ${MAKE_SET_STRING} mrproper
@@ -505,6 +524,7 @@ compile_env() {
     else
         echo -e "${INFO} Use the .config file in the current directory."
     fi
+    
     # Clear kernel signature
     sed -i "s|CONFIG_LOCALVERSION=.*|CONFIG_LOCALVERSION=\"\"|" .config
 
@@ -525,6 +545,8 @@ compile_env() {
     # Set max process
     PROCESS="$(cat /proc/cpuinfo | grep "processor" | wc -l)"
     [[ -z "${PROCESS}" || "${PROCESS}" -lt "1" ]] && PROCESS="1" && echo "PROCESS: 1"
+
+    echo -e "${INFO} Compile env is ready."
 }
 
 compile_dtbs() {
