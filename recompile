@@ -412,10 +412,24 @@ get_kernel_source() {
 
         # Clone the latest kernel source code. If it fails, wait 1 minute and try again, try 10 times.
         for i in {1..10}; do
-            git clone -q --single-branch --depth=1 --branch=${code_branch} https://github.com/${server_kernel_repo} ${kernel_path}/${local_kernel_path}
+            git clone -q --single-branch --branch=${code_branch} https://github.com/${server_kernel_repo} ${kernel_path}/${local_kernel_path}
             [[ "${?}" -eq "0" ]] && break || sleep 60
         done
         [[ "${?}" -eq "0" ]] || error_msg "[ https://github.com/${server_kernel_repo} ] Clone failed."
+    fi
+
+    cd ${kernel_path}/${local_kernel_path}
+
+    if [[ -n "${kernel_tag}" ]]; then
+        echo -e "${INFO} Fetching all tags and commits..."
+        git fetch --all --tags --unshallow
+        echo -e "${INFO} Checking out kernel tag or commit: ${kernel_tag}"
+        git checkout ${kernel_tag}
+        if [[ "${?}" -ne "0" ]]; then
+            error_msg "Failed to checkout kernel tag or commit: ${kernel_tag}"
+        fi
+        kernel_version=$(make kernelversion)
+        echo -e "${INFO} Kernel version set to: ${kernel_version}"
     else
         # Get a local kernel version
         local_makefile="${kernel_path}/${local_kernel_path}/Makefile"
@@ -426,7 +440,6 @@ get_kernel_source() {
         # Local version and server version comparison
         if [[ "${auto_kernel}" == "true" || "${auto_kernel}" == "yes" ]] && [[ "${kernel_sub}" -gt "${local_makefile_sublevel}" ]]; then
             # Pull the latest source code of the server
-            cd ${kernel_path}/${local_kernel_path}
             git checkout ${code_branch} && git reset --hard origin/${code_branch} && git pull
             kernel_version="${local_makefile_version}.${local_makefile_patchlevel}.${kernel_sub}"
             echo -e "${INFO} Synchronize the upstream source code, compile the kernel version [ ${kernel_version} ]."
@@ -437,6 +450,12 @@ get_kernel_source() {
         fi
     fi
 
+    # Remove the local version number
+    rm -f ${kernel_path}/${local_kernel_path}/localversion
+
+    # Apply custom kernel patches
+    [[ "${auto_patch}" == "true" || "${auto_patch}" == "yes" ]] && apply_patch
+}
     # Checkout specific kernel tag if provided
     if [[ -n "${kernel_tag}" ]]; then
         cd ${kernel_path}/${local_kernel_path}
