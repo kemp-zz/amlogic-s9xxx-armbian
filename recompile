@@ -455,6 +455,8 @@ get_kernel_source() {
 
     # Apply custom kernel patches
     [[ "${auto_patch}" == "true" || "${auto_patch}" == "yes" ]] && apply_patch
+    echo -e "${INFO} Kernel source directory contents:"
+    ls -la ${kernel_path}/${local_kernel_path}
 }
 
 compile_env() {
@@ -533,10 +535,19 @@ compile_kernel() {
     make ${MAKE_SET_STRING} Image modules dtbs -j${PROCESS}
     [[ "${?}" -eq "0" ]] && echo -e "${SUCCESS} The kernel is compiled successfully."
 
+    # Make modules explicitly
+    echo -e "${STEPS} Start compilation modules..."
+    make ${MAKE_SET_STRING} modules -j${PROCESS}
+    [[ "${?}" -eq "0" ]] && echo -e "${SUCCESS} The modules are compiled successfully."
+
     # Install modules
     echo -e "${STEPS} Install modules..."
     make ${MAKE_SET_STRING} INSTALL_MOD_PATH=${output_path}/modules modules_install
     [[ "${?}" -eq "0" ]] && echo -e "${SUCCESS} The modules is installed successfully."
+    echo -e "${INFO} Modules directory contents:"
+    ls -la ${output_path}/modules/lib/modules
+    echo -e "${INFO} Modules directory size:"
+    du -sh ${output_path}/modules/lib/modules
 
     # Strip debug information
     STRIP="${CROSS_COMPILE}strip"
@@ -590,7 +601,13 @@ packit_kernel() {
     echo -e "${STEPS} Packing the [ ${kernel_outname} ] boot, modules and header packages..."
 
     cd ${output_path}/boot
-    rm -rf dtb-*
+    echo -e "${INFO} Boot directory contents before packaging:"
+    ls -la
+    echo -e "${INFO} Boot directory size:"
+    du -sh .
+
+    ls -la  # Add this line to check the contents of the boot directory
+    [[ -z "$(ls -A)" ]] && error_msg "Boot directory is empty!"
     chmod +x *
     tar -czf boot-${kernel_outname}.tar.gz *
     mv -f *.tar.gz ${output_path}/${kernel_version}
@@ -602,6 +619,10 @@ packit_kernel() {
     echo -e "${SUCCESS} The [ modules-${kernel_outname}.tar.gz ] file is packaged."
 
     cd ${output_path}/${kernel_version}
+    echo -e "${INFO} Final packaged files:"
+    ls -lh
+    echo -e "${INFO} Total size of packaged files:"
+    du -sh .
     [[ -n "$(ls header-${kernel_outname}.tar.gz 2>/dev/null)" ]] && {
         echo -e "${SUCCESS} The [ header-${kernel_outname}.tar.gz ] file is packaged."
     }
