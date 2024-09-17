@@ -142,6 +142,11 @@ init_var() {
                 compress_format="$2"
                 shift 2
                 ;;
+            -g|--KernelTag)
+                [[ -n "$2" ]] || error_msg "Missing value after -g"
+                kernel_tag="$2"
+                shift 2
+                ;;
             *)
                 error_msg "Unknown option: $1"
                 ;;
@@ -173,8 +178,8 @@ init_var() {
     info_msg "Repository owner: ${code_owner}"
     info_msg "Toolchain: ${toolchain_name}"
     info_msg "Compress format: ${compress_format}"
+    info_msg "Kernel tag: ${kernel_tag}"
 }
-
 # Check and install the cross-compilation toolchain
 toolchain_check() {
     info_msg "Start checking the toolchain for compiling the kernel..."
