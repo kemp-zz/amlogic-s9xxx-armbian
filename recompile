@@ -318,56 +318,86 @@ get_kernel_source() {
 
     if [[ ! -d "${kernel_path}/${local_kernel_path}" ]]; then
         info_msg "Cloning kernel repository..."
-        git clone --depth=1 --single-branch --branch=${code_branch} https://github.com/${server_kernel_repo} ${kernel_path}/${local_kernel_path}
-        [[ $? -eq 0 ]] || error_msg "Failed to clone kernel repository."
+        git clone --single-branch --branch=${code_branch} https://github.com/${server_kernel_repo} ${kernel_path}/${local_kernel_path}
+        if [[ $? -ne 0 ]]; then
+            error_msg "Failed to clone kernel repository: https://github.com/${server_kernel_repo}"
+        fi
     else
-        info_msg "Updating existing kernel repository..."
+        info_msg "Kernel repository already exists. Updating..."
         cd ${kernel_path}/${local_kernel_path}
-        git fetch origin ${code_branch}
+        git fetch origin
         git reset --hard origin/${code_branch}
-        git pull origin ${code_branch}
+        if [[ $? -ne 0 ]]; then
+            error_msg "Failed to update existing kernel repository"
+        fi
     fi
 
     cd ${kernel_path}/${local_kernel_path}
+
+    info_msg "Fetching all tags and commits..."
+    git fetch --all --tags --unshallow
+    if [[ $? -ne 0 ]]; then
+        warning_msg "Failed to fetch all tags and commits. This might cause issues with specific tag checkouts."
+    fi
     
     if [[ -n "${kernel_tag}" ]]; then
         info_msg "Checking out specific kernel tag or commit: ${kernel_tag}"
-        git checkout ${kernel_tag}
-        [[ $? -eq 0 ]] || error_msg "Failed to checkout kernel tag or commit: ${kernel_tag}"
+        for i in {1..3}; do
+            git checkout ${kernel_tag} && break
+            if [[ $i == 3 ]]; then
+                error_msg "Failed to checkout kernel tag or commit after 3 attempts: ${kernel_tag}"
+            else
+                warning_msg "Checkout failed, retrying... (Attempt $i of 3)"
+                sleep 5
+            fi
+        done
         
-        local tag_version=$(git describe --tags --abbrev=0)
-        local makefile_version=$(make kernelversion)
+        local tag_version=$(git describe --tags --abbrev=0 2>/dev/null)
+        local makefile_version=$(make kernelversion 2>/dev/null)
         info_msg "Tag version: ${tag_version}, Makefile version: ${makefile_version}"
         
-        if [[ "${tag_version}" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+        if [[ -n "${tag_version}" && "${tag_version}" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
             kernel_version="${BASH_REMATCH[1]}"
             info_msg "Using tag version: ${kernel_version}"
-        else
+        elif [[ -n "${makefile_version}" ]]; then
             kernel_version="${makefile_version}"
-            warning_msg "Tag doesn't match expected format. Using Makefile version: ${kernel_version}"
+            info_msg "Using Makefile version: ${kernel_version}"
+        else
+            error_msg "Unable to determine kernel version from tag or Makefile"
         fi
     else
-        local makefile_version=$(make kernelversion)
-        local makefile_patchlevel=$(grep -oP 'PATCHLEVEL = \K\d+' Makefile)
-        local makefile_sublevel=$(grep -oP 'SUBLEVEL = \K\d+' Makefile)
-
-        if [[ "${auto_kernel}" == "true" && -n "${kernel_sub}" && "${kernel_sub}" -gt "${makefile_sublevel}" ]]; then
-            kernel_version="${makefile_version%.*}.${kernel_sub}"
-            info_msg "Using latest kernel version: ${kernel_version}"
-        else
+        info_msg "No specific tag provided. Using the latest version from the current branch."
+        local makefile_version=$(make kernelversion 2>/dev/null)
+        if [[ -n "${makefile_version}" ]]; then
             kernel_version="${makefile_version}"
             info_msg "Using Makefile kernel version: ${kernel_version}"
+        else
+            error_msg "Unable to determine kernel version from Makefile"
         fi
     fi
 
     # Verify version consistency
-    [[ "${kernel_version}" == "$(make kernelversion)" ]] || warning_msg "Kernel version mismatch: ${kernel_version} vs $(make kernelversion)"
+    local current_version=$(make kernelversion 2>/dev/null)
+    if [[ -n "${current_version}" ]]; then
+        if [[ "${kernel_version}" != "${current_version}" ]]; then
+            warning_msg "Kernel version mismatch: ${kernel_version} vs ${current_version}"
+        else
+            info_msg "Kernel version verified: ${kernel_version}"
+        fi
+    else
+        warning_msg "Unable to verify kernel version consistency"
+    fi
 
     # Remove local version
-    rm -f ${kernel_path}/${local_kernel_path}/localversion
+    rm -f localversion
 
     # Apply patches if needed
-    [[ "${auto_patch}" == "true" ]] && apply_patch
+    if [[ "${auto_patch}" == "true" ]]; then
+        info_msg "Applying kernel patches..."
+        apply_patch
+    else
+        info_msg "Skipping kernel patches (auto_patch is not set to true)"
+    fi
 
     info_msg "Kernel source code preparation completed for version ${kernel_version}"
 }
