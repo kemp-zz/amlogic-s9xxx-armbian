@@ -455,8 +455,17 @@ get_kernel_source() {
 
     # Apply custom kernel patches
     [[ "${auto_patch}" == "true" || "${auto_patch}" == "yes" ]] && apply_patch
+
     echo -e "${INFO} Kernel source directory contents:"
     ls -la ${kernel_path}/${local_kernel_path}
+
+    # Verify kernel source
+    if [[ ! -f "${kernel_path}/${local_kernel_path}/Makefile" ]]; then
+        error_msg "Kernel source seems incomplete. Makefile not found."
+    fi
+
+    echo -e "${INFO} Kernel version: ${kernel_version}"
+    echo -e "${INFO} Kernel source path: ${kernel_path}/${local_kernel_path}"
 }
 
 compile_env() {
@@ -549,10 +558,33 @@ compile_kernel() {
     echo -e "${INFO} Modules directory size:"
     du -sh ${output_path}/modules/lib/modules
 
+    # Copy kernel image and other necessary files to boot directory
+    echo -e "${STEPS} Copying kernel image and other files to boot directory..."
+    mkdir -p ${output_path}/boot
+    cp ${kernel_path}/${local_kernel_path}/arch/arm64/boot/Image ${output_path}/boot/vmlinuz-${kernel_outname}
+    cp ${kernel_path}/${local_kernel_path}/.config ${output_path}/boot/config-${kernel_outname}
+    cp ${kernel_path}/${local_kernel_path}/System.map ${output_path}/boot/System.map-${kernel_outname}
+
+    # Check if files were copied successfully
+    if [[ -f "${output_path}/boot/vmlinuz-${kernel_outname}" ]]; then
+        echo -e "${SUCCESS} Kernel image copied successfully."
+    else
+        error_msg "Failed to copy kernel image."
+    fi
+
     # Strip debug information
     STRIP="${CROSS_COMPILE}strip"
     find ${output_path}/modules -name "*.ko" -print0 | xargs -0 ${STRIP} --strip-debug 2>/dev/null
     [[ "${?}" -eq "0" ]] && echo -e "${SUCCESS} The modules is stripped successfully."
+
+    # Check if modules were installed correctly
+    if [[ -d "${output_path}/modules/lib/modules/${kernel_outname}" ]]; then
+        echo -e "${SUCCESS} Modules installed successfully."
+        echo -e "${INFO} Modules directory contents:"
+        ls -la ${output_path}/modules/lib/modules/${kernel_outname}
+    else
+        error_msg "Failed to install modules."
+    fi
 }
 
 packit_dtbs() {
@@ -605,6 +637,18 @@ packit_kernel() {
     ls -la
     echo -e "${INFO} Boot directory size:"
     du -sh .
+    if [[ -z "$(ls -A)" ]]; then
+        error_msg "Boot directory is empty! Compilation may have failed."
+    fi
+
+    chmod +x *
+    tar -czf boot-${kernel_outname}.tar.gz *
+    if [[ $? -eq 0 ]]; then
+        mv -f *.tar.gz ${output_path}/${kernel_version}
+        echo -e "${SUCCESS} The [ boot-${kernel_outname}.tar.gz ] file is packaged."
+    else
+        error_msg "Failed to create boot package."
+    fi
 
     ls -la  # Add this line to check the contents of the boot directory
     [[ -z "$(ls -A)" ]] && error_msg "Boot directory is empty!"
