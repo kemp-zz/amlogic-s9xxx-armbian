@@ -456,25 +456,6 @@ get_kernel_source() {
     # Apply custom kernel patches
     [[ "${auto_patch}" == "true" || "${auto_patch}" == "yes" ]] && apply_patch
 }
-    # Checkout specific kernel tag if provided
-    if [[ -n "${kernel_tag}" ]]; then
-        cd ${kernel_path}/${local_kernel_path}
-        echo "Checking out kernel tag: ${kernel_tag}"
-        git checkout ${kernel_tag}
-        if [[ "${?}" -ne "0" ]]; then
-            error_msg "Failed to checkout kernel tag: ${kernel_tag}"
-        fi
-        # Update kernel_version based on the tag
-        kernel_version=$(make kernelversion)
-        echo "Kernel version set to: ${kernel_version}"
-    fi
-
-    # Remove the local version number
-    rm -f ${kernel_path}/${local_kernel_path}/localversion
-
-    # Apply custom kernel patches
-    [[ "${auto_patch}" == "true" || "${auto_patch}" == "yes" ]] && apply_patch
-}
 
 compile_env() {
     cd ${current_path}
