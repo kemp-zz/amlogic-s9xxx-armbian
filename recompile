@@ -552,18 +552,23 @@ compile_kernel() {
     # Install modules
     echo -e "${STEPS} Install modules..."
     make ${MAKE_SET_STRING} INSTALL_MOD_PATH=${output_path}/modules modules_install
-    [[ "${?}" -eq "0" ]] && echo -e "${SUCCESS} The modules is installed successfully."
+    [[ "${?}" -eq "0" ]] && echo -e "${SUCCESS} The modules are installed successfully."
     echo -e "${INFO} Modules directory contents:"
     ls -la ${output_path}/modules/lib/modules
     echo -e "${INFO} Modules directory size:"
     du -sh ${output_path}/modules/lib/modules
 
+    # Install headers
+    echo -e "${STEPS} Install kernel headers..."
+    make ${MAKE_SET_STRING} INSTALL_HDR_PATH=${output_path}/header headers_install
+    [[ "${?}" -eq "0" ]] && echo -e "${SUCCESS} Kernel headers are installed successfully."
+
     # Copy kernel image and other necessary files to boot directory
     echo -e "${STEPS} Copying kernel image and other files to boot directory..."
     mkdir -p ${output_path}/boot
-    cp ${kernel_path}/${local_kernel_path}/arch/arm64/boot/Image ${output_path}/boot/vmlinuz-${kernel_outname}
-    cp ${kernel_path}/${local_kernel_path}/.config ${output_path}/boot/config-${kernel_outname}
-    cp ${kernel_path}/${local_kernel_path}/System.map ${output_path}/boot/System.map-${kernel_outname}
+    cp arch/arm64/boot/Image ${output_path}/boot/vmlinuz-${kernel_outname}
+    cp .config ${output_path}/boot/config-${kernel_outname}
+    cp System.map ${output_path}/boot/System.map-${kernel_outname}
 
     # Check if files were copied successfully
     if [[ -f "${output_path}/boot/vmlinuz-${kernel_outname}" ]]; then
@@ -572,10 +577,28 @@ compile_kernel() {
         error_msg "Failed to copy kernel image."
     fi
 
+    # Generate initrd.img
+    echo -e "${STEPS} Generating initrd.img..."
+    if command -v update-initramfs &> /dev/null; then
+        update-initramfs -c -k ${kernel_outname} -b ${output_path}/boot
+        [[ "${?}" -eq "0" ]] && echo -e "${SUCCESS} initrd.img generated successfully."
+    else
+        echo -e "${WARNING} update-initramfs not found. Unable to generate initrd.img."
+    fi
+
+    # Generate uInitrd
+    echo -e "${STEPS} Generating uInitrd..."
+    if command -v mkimage &> /dev/null; then
+        mkimage -A arm64 -O linux -T ramdisk -C gzip -n uInitrd -d ${output_path}/boot/initrd.img-${kernel_outname} ${output_path}/boot/uInitrd-${kernel_outname}
+        [[ "${?}" -eq "0" ]] && echo -e "${SUCCESS} uInitrd generated successfully."
+    else
+        echo -e "${WARNING} mkimage not found. Unable to generate uInitrd."
+    fi
+
     # Strip debug information
     STRIP="${CROSS_COMPILE}strip"
     find ${output_path}/modules -name "*.ko" -print0 | xargs -0 ${STRIP} --strip-debug 2>/dev/null
-    [[ "${?}" -eq "0" ]] && echo -e "${SUCCESS} The modules is stripped successfully."
+    [[ "${?}" -eq "0" ]] && echo -e "${SUCCESS} The modules are stripped successfully."
 
     # Check if modules were installed correctly
     if [[ -d "${output_path}/modules/lib/modules/${kernel_outname}" ]]; then
@@ -585,6 +608,8 @@ compile_kernel() {
     else
         error_msg "Failed to install modules."
     fi
+
+    echo -e "${INFO} Kernel compilation and file generation completed."
 }
 
 packit_dtbs() {
