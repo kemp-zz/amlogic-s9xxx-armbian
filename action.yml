@@ -26,7 +26,7 @@ inputs:
   armbian_kernel:
     description: "Set kernel version."
     required: false
-    default: "6.1.y_5.15.y"
+    default: "6.6.y"
   auto_kernel:
     description: "Use latest kernel."
     required: false
@@ -50,7 +50,7 @@ inputs:
   kernel_version:
     description: "Select kernel version"
     required: false
-    default: "6.1.y_5.15.y"
+    default: "6.6.y"
   kernel_auto:
     description: "Auto use the latest kernel"
     required: false
